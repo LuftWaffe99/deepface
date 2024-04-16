@@ -27,3 +27,4 @@ BACKENDS:  # framework for face detection
 THRESHOLDS:  # Threshold values for various filtering tasks
   Face_Confidence: 0.7 
   newNode_Dist: 0.35
+  closeNode_Num: 30

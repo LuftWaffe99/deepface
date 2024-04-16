@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import os 
 from voyager import Index, Space
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Union
 import pandas as pd 
 import yaml
 import hashlib
@@ -16,6 +16,7 @@ with open("config.yml", "r") as f:
 
 FACE_CONFIDENCE = config['THRESHOLD']['Face_Confidence']
 CLOSE_DISTANCE = config['THRESHOLD']['newNode_Dist']
+CLOSENODE_NUM = config['THRESHOLD']['closeNode_Num']
 BACKENDS = config['BACKENDS']
 MODELS = config['MODELS']
 DIM_SIZES = config['DIM_SIZES']
@@ -144,44 +145,65 @@ def cvtImgs2Embeddings(db_path: str, model_name: int = 1, backend_num: int = 2)-
     
     return embedded_imgs, imgs_name
 
+######################################################################################
+    
 @dataclass 
 class Node():
-    nodeType: str
-    vector_id: int
-    embedding: List[float]
-    closeNodes: List['Node'] = None
+    nodeType: str # parent/child
+    space_id: int # id in Space scale 
+    embedding: List[float] # vector embedding 
+    closeNodes: List['Node'] = None # for parent node as centroid having its closes child nodes used during cluster expansion 
+    parentNode = None      # if child node then its parent's id                      
     
-    def isClose(self, otherNode: 'Node', embeddedSpace: voyager.Index)->bool:
+    def isClose(self, otherNode: Union['Node', List[float]], embeddedSpace: voyager.Index)->bool:
         
-        distance = embeddedSpace.getdistance(self.embedding, otherNode.embedding)
-        return True if distance < CLOSE_DISTANCE else False
+        if isinstance(otherNode, Node):
+            distance = embeddedSpace.get_distance(self.embedding, otherNode.embedding)
+        else:
+            distance = embeddedSpace.get_distance(self.embedding, otherNode)
         
+        status = True if distance < CLOSE_DISTANCE else False
         
-
-@dataclass
-class embeddedSpace():
-    parentNodes: List[Node] = field(default_factory = list)
+        return status, distance 
     
+    
+    def __eq__(self, otherNode: 'Node') -> bool:
+        return self.space_id == otherNode.space_id
+    
+        
+    def getDistantNode(self, embeddedSpace: voyager.Index):
+        
+        assert self.nodeType == "parent", "Child node can't have list of close nodes"
+        sorted_nodes = self.closeNodes.sort(key=lambda node: embeddedSpace.get_distance(self.embedding,
+                                                                                        node.embedding))
+        distant_node_index = self.closeNodes.index(sorted_nodes[-1])
+        distance_to_distant = embeddedSpace.get_distance(self.embedding, self.closeNodes[distant_node_index].embedding)
+        
+        return distant_node_index, distance_to_distant
+    
+        
 
     
 
 class embeddingSearcher():
     
     def __init__(self, data_fldr: str, model_name: str = MODELS[1], 
-                 neighbors_num: int = 3, backend_num: int = 2, groupmates_num: int = 30) -> None:
+                 neighbors_num: int = 3, backend_num: int = 2, closenodes_num: int = CLOSENODE_NUM) -> None:
         
         self.data_fldr = data_fldr
         self.neighbors_num = neighbors_num
         self.backend_num = backend_num
         self.model_name = model_name
-        self.groupmates_num = groupmates_num
+        self.closenodes_num = closenodes_num
         self.lookup_table = None
         self.embeddedSpace = None
+        self.node_collection = {}
         
         try:
             self._loadFiles()
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}") 
+            
         
         
     def _loadFiles(self)->None:
@@ -203,30 +225,40 @@ class embeddingSearcher():
         index = Index(Space.Cosine, num_dimensions=DIM_SIZES[self.model_name]) 
         
         num_entities = len(raw_embeddings)
-        # reshaped_embeddings = np.ndarray(shape=(num_entities, embedding_size), dtype=np.float32, buffer=np.array(raw_embeddings))
         unique_ids_parent = [generate_unique_id(img_path) for img_path in imgs_path]
         
-        # Generate new look-up table
-        self.lookup_table = pd.DataFrame(data=imgs_path, columns=['Image path'], index=unique_ids_parent)
-        self.lookup_table.to_csv("./Lookup_Table.csv") 
+        self.lookup_table = pd.DataFrame(data=imgs_path, columns=['Image path'], index=unique_ids_parent) 
         
         for ind in range(num_entities):
             index.add_item(vector=raw_embeddings[ind], id=unique_ids_parent[ind])
             
-        self.embeddedSpace = index
-        
-        print(f"Number of elements in space: {self.embeddedSpace.num_elements}")
+        self.embeddedSpace = index 
+        self._initNodeCollection(raw_embeddings, unique_ids_parent)
+        self.lookup_table.to_csv("./Lookup_Table.csv")
 
         
+    def _initNodeCollection(self, raw_embeddings: List[List[float]], unique_ids_parent: List[int]):
         
+        """
+            Initializes parent nodes and append to node collection to keep track 
+            nodes in embedded Space
 
+        """
+        
+        for embedding, id in zip(raw_embeddings, unique_ids_parent):
+            parent_node = Node(nodeType="parent", space_id=id, embedding=embedding)
+            self.node_collection[id] = parent_node
+        
+        print(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
+            
 
     def findNearestNeighbors(self, frame: np.array, draw_bbox = False, face_distance: float=0.4, extendSpace: bool=False)->List[Dict[str, Any]]:
         
         """
             Class method used to find faces in the frame along with its matched faces from the 
             database
-            Base Embeddings: vectors having ###...###1 id and extracted from the database
+            If extendSpace is True, the face embedding will be attached to the closes parent Node
+            and the distance should be small. 
             
         Args:
             frame (np.array): Frame obtianed from the stream or camera 
@@ -260,8 +292,9 @@ class embeddingSearcher():
                 faces_list.append(face_dict)
                 
                 if extendSpace:
-                    closestBaseEmbedding = self.embeddedSpace.get_vector(neighbors[0])
-                    self._addNewEmbeedingOnCondfidence(closestBaseEmbedding, face_embedding) # Add as a new embedding if it gives small distance
+                    closestParentID = self.embeddedSpace.get_vector(neighbors[0])
+                    parentNode = self.node_collection[closestParentID]
+                    self._addNewEmbeedingOnDistance(parentNode, face_embedding) # Add as a new embedding if it gives small distance
                     
                 print(f"Face detected with ids: {neighbors}")
         
@@ -327,19 +360,36 @@ class embeddingSearcher():
     
     
     
-    def _addNewEmbeedingOnCondfidence(self, base_embedding: List[float], new_embedding: List[float]):
+    def _addNewEmbeedingOnDistance(self, parentNode: Node, child_embedding: List[float]):
+    
+        isChild, distance_to_new = parentNode.isClose(child_embedding, self.embeddedSpace) # is Close enough ?
+        child_num = len(parentNode.closeNodes)
         
-        groupmates_found = []
-        groupmates_distance = []
+        # Creation of new child node 
+        newChildID = int(str(parentNode.space_id) + str(len(parentNode.closeNodes)))
+        newChild = Node(nodeType="child", space_id=newChildID, 
+                            embedding=child_embedding, parentNode=parentNode.space_id)
         
-        for ind in range(self.groupmates_num):
-            try:
-                vector = self.embeddedSpace.get_vector()
-            except Exception as e:
-                
-        
-        if self.groupmates_num <= 
+        if isChild and child_num < self.closenodes_num:
+            # Adding to the embedded Space and node collection 
+            parentNode.closeNodes.append(newChild)
+            self.embeddedSpace.add_item(vector=child_embedding, id=newChildID)
             
+        elif isChild and child_num > self.closenodes_num:
+            distant_node_index, distance_to_distant = parentNode.getDistantNode(self.embeddedSpace)
 
+            if distance_to_distant > distance_to_new: # replace distant node to the new 
+                
+                # Update old node with new in embedded space and node collection
+                
+                # TODO: Consider how to remove the old one !!!
+                
+                del parentNode.closeNodes[distant_node_index] 
+                parentNode.closeNodes.insert(distant_node_index, newChild)
         
+        else:
+            del newChild
+        
+
+
 
