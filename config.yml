@@ -1,0 +1,29 @@
+MODELS: # facial feature extraction models
+  - VGG-Face
+  - Facenet
+  - OpenFace
+  - DeepFace
+  - DeepID
+  - ArcFace
+  - Dlib
+  - SFace
+  - GhostFaceNet
+
+DIM_SIZES:  # dimensionality of embedded Space/Index
+  VGG-Face: 4096 
+  Facenet: 128
+
+BACKENDS:  # framework for face detection
+  - opencv
+  - ssd
+  - dlib
+  - mtcnn
+  - retinaface
+  - mediapipe
+  - yolov8
+  - yunet
+  - fastmtcnn
+
+THRESHOLDS:  # Threshold values for various filtering tasks
+  Face_Confidence: 0.7 
+  newNode_Dist: 0.35
