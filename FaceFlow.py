@@ -178,11 +178,16 @@ class embeddingSearcher():
             if face['face_confidence'] > FACE_CONFIDENCE:
                 
                 neighbors, distances = self.embeddedSpace.query(face_embedding, k = self.neighbors_num)
-                
                 found_matches_path = []
                 
-                for neighbor_id in neighbors:          
-                    matched_face_path = self.lookup_table.loc[neighbor_id].values
+                for neighbor_id in neighbors:  
+                    try:         
+                        matched_face_path = self.lookup_table.loc[neighbor_id].values
+                    except Exception as e: # handle child embedding case (not specified in Look-Up table)
+                        padding_index = -len(str(self.closenodes_num))
+                        padding_removed = int(str(neighbor_id)[:padding_index])
+                        matched_face_path = self.lookup_table.loc[padding_removed].values
+                        
                     found_matches_path.append(matched_face_path)
                     
                 face_dict = {"detected_face_coord": face_coords, "path_to_matches": found_matches_path,
@@ -290,7 +295,9 @@ class embeddingSearcher():
         child_num = len(parentNode.closeNodes)
         
         # Creation of new child node 
-        newChildID = int(str(parentNode.space_id) + str(len(parentNode.closeNodes)))
+        padding = len(str(self.closenodes_num))
+        padded_id = str(child_num).zfill(padding)
+        newChildID = int(str(parentNode.space_id) + padded_id)
         newChild = Node(nodeType="child", space_id=newChildID, 
                         embedding=child_embedding, parentNode=parentNode.space_id)
         

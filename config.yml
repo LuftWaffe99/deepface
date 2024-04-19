@@ -24,7 +24,7 @@ BACKENDS:  # framework for face detection
   - yunet
   - fastmtcnn
 
-THRESHOLDS:  # Threshold values for various filtering tasks
+THRESHOLD:  # Threshold values for various filtering tasks
   Face_Confidence: 0.7 
-  newNode_Dist: 0.35
-  closeNode_Num: 30
+  newNode_Dist: 0.45
+  closeNode_Num: 5
