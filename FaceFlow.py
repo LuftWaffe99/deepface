@@ -1,4 +1,5 @@
 import logging.config
+import logging.config
 from deepface import DeepFace
 import numpy as np
 import os 
@@ -11,6 +12,7 @@ import hashlib
 import cv2
 from dataclasses import dataclass, field   
 from utils import generate_unique_id, draw_text, cvtImgs2Embeddings
+import logging
 import logging
 
 
@@ -34,6 +36,7 @@ def setLogger():
     file_handler = logging.FileHandler(f"{__name__}.log", mode='a')
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(logging.DEBUG)
     
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
@@ -92,8 +95,9 @@ class Node():
         """
         
         assert self.nodeType == "parent", "Child node can't have list of close nodes"
-        sorted_nodes = self.closeNodes.sort(key=lambda node: embeddedSpace.get_distance(self.embedding,
-                                                                                        node.embedding))
+        sorted_nodes = sorted(self.closeNodes, key=lambda node: embeddedSpace.get_distance(self.embedding,
+                                                                                            node.embedding))
+        
         distant_node_index = self.closeNodes.index(sorted_nodes[-1])
         distance_to_distant = embeddedSpace.get_distance(self.embedding, self.closeNodes[distant_node_index].embedding)
         
@@ -137,6 +141,7 @@ class embeddingSearcher():
         """
         
         logger.info("Creating Look-Up Table from the database...")
+        logger.info("Creating Look-Up Table from the database...")
         
         raw_embeddings, imgs_path = cvtImgs2Embeddings(self.data_fldr , 1,  self.backend_num)
         
@@ -167,6 +172,8 @@ class embeddingSearcher():
             parent_node = Node(nodeType="parent", space_id=id, embedding=embedding)
             self.node_collection[id] = parent_node
         
+        
+        logger.info(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
         
         logger.info(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
             
@@ -292,6 +299,7 @@ class embeddingSearcher():
                     cv2.rectangle(frame, (face_coords['x'], face_coords['y']), (face_coords['x']+face_coords['w'], face_coords['y']+face_coords['h']), (255, 255, 0), 2) 
                 else:
                     logger.info("Resized image dimensions exceed bbox dimensions. Skipping drawing.")
+                    logger.info("Resized image dimensions exceed bbox dimensions. Skipping drawing.")
                     
             except Exception as e:
                 print(e)     
@@ -313,7 +321,7 @@ class embeddingSearcher():
         
         isChild, distance_to_new = parentNode.isClose(child_embedding, self.embeddedSpace) # is Close enough ?
         child_num = len(parentNode.closeNodes)
-        
+       
         # Creation of new child node 
         padding = len(str(self.closenodes_num))
         padded_id = str(child_num).zfill(padding)
@@ -326,9 +334,10 @@ class embeddingSearcher():
             parentNode.closeNodes.append(newChild)
             self.embeddedSpace.add_item(vector=child_embedding, id=newChildID)
             logger.info(f"Added new child for {parentNode.space_id}")
+            logger.info(f"Added new child for {parentNode.space_id}")
             
-        elif isChild and child_num > self.closenodes_num:
-            print("Creating and deleting child")
+        elif isChild and child_num == self.closenodes_num:
+            
             distant_node_index, distance_to_distant, child_id = parentNode.getDistantNode(self.embeddedSpace)
 
             if distance_to_distant > distance_to_new: # replace distant node to the new 
@@ -339,6 +348,8 @@ class embeddingSearcher():
                 
                 self.embeddedSpace.mark_deleted(child_id)
                 self.embeddedSpace.add_item(vector=child_embedding, id=newChildID)
+                
+                logger.info(f"Added new child for {parentNode.space_id} and removed {child_id}")
                 
                 logger.info(f"Added new child for {parentNode.space_id} and removed {child_id}")
         else:
