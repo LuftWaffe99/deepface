@@ -1,3 +1,4 @@
+import logging.config
 from deepface import DeepFace
 import numpy as np
 import os 
@@ -10,6 +11,7 @@ import hashlib
 import cv2
 from dataclasses import dataclass, field   
 from utils import generate_unique_id, draw_text, cvtImgs2Embeddings
+import logging
 
 
 with open("config.yml", "r") as f:
@@ -24,6 +26,23 @@ MODELS = config['MODELS']
 DIM_SIZES = config['DIM_SIZES']
 
 
+def setLogger():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+     
+    formatter = logging.Formatter('%(levelname)s:%(name)s: %(message)s' )
+    file_handler = logging.FileHandler(f"{__name__}.log", mode='a')
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+    return logger
+
+
+
+logger = setLogger()
 
 @dataclass 
 class Node():
@@ -117,7 +136,7 @@ class embeddingSearcher():
             None: 
         """
         
-        print("Creating Look-Up Table from the database...")
+        logger.info("Creating Look-Up Table from the database...")
         
         raw_embeddings, imgs_path = cvtImgs2Embeddings(self.data_fldr , 1,  self.backend_num)
         
@@ -148,7 +167,8 @@ class embeddingSearcher():
             parent_node = Node(nodeType="parent", space_id=id, embedding=embedding)
             self.node_collection[id] = parent_node
         
-        print(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
+        
+        logger.info(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
             
 
     def findNearestNeighbors(self, frame: np.array, draw_bbox = False, face_distance: float=0.4, extendSpace: bool=True)->List[Dict[str, Any]]:
@@ -271,7 +291,7 @@ class embeddingSearcher():
                     frame[draw_coord[1]:draw_coord[3], draw_coord[0]:draw_coord[2]] = resized_target
                     cv2.rectangle(frame, (face_coords['x'], face_coords['y']), (face_coords['x']+face_coords['w'], face_coords['y']+face_coords['h']), (255, 255, 0), 2) 
                 else:
-                    print("Resized image dimensions exceed bbox dimensions. Skipping drawing.")
+                    logger.info("Resized image dimensions exceed bbox dimensions. Skipping drawing.")
                     
             except Exception as e:
                 print(e)     
@@ -305,10 +325,10 @@ class embeddingSearcher():
             # Adding to the embedded Space and node collection 
             parentNode.closeNodes.append(newChild)
             self.embeddedSpace.add_item(vector=child_embedding, id=newChildID)
-            print(f"Added new child for {parentNode.space_id}")
+            logger.info(f"Added new child for {parentNode.space_id}")
             
         elif isChild and child_num > self.closenodes_num:
-            
+            print("Creating and deleting child")
             distant_node_index, distance_to_distant, child_id = parentNode.getDistantNode(self.embeddedSpace)
 
             if distance_to_distant > distance_to_new: # replace distant node to the new 
@@ -319,7 +339,8 @@ class embeddingSearcher():
                 
                 self.embeddedSpace.mark_deleted(child_id)
                 self.embeddedSpace.add_item(vector=child_embedding, id=newChildID)
-                print(f"Added new child for {parentNode.space_id} and removed {child_id}")
+                
+                logger.info(f"Added new child for {parentNode.space_id} and removed {child_id}")
         else:
             del newChild
         
