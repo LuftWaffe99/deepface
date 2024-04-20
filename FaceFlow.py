@@ -141,7 +141,7 @@ class embeddingSearcher():
         """
         
         logger.info("Creating Look-Up Table from the database...")
-        logger.info("Creating Look-Up Table from the database...")
+    
         
         raw_embeddings, imgs_path = cvtImgs2Embeddings(self.data_fldr , 1,  self.backend_num)
         
@@ -175,7 +175,6 @@ class embeddingSearcher():
         
         logger.info(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
         
-        logger.info(f"Initilized {self.embeddedSpace.num_elements} parent nodes")
             
 
     def findNearestNeighbors(self, frame: np.array, draw_bbox = False, face_distance: float=0.4, extendSpace: bool=True)->List[Dict[str, Any]]:
@@ -299,7 +298,7 @@ class embeddingSearcher():
                     cv2.rectangle(frame, (face_coords['x'], face_coords['y']), (face_coords['x']+face_coords['w'], face_coords['y']+face_coords['h']), (255, 255, 0), 2) 
                 else:
                     logger.info("Resized image dimensions exceed bbox dimensions. Skipping drawing.")
-                    logger.info("Resized image dimensions exceed bbox dimensions. Skipping drawing.")
+                    
                     
             except Exception as e:
                 print(e)     
@@ -334,7 +333,7 @@ class embeddingSearcher():
             parentNode.closeNodes.append(newChild)
             self.embeddedSpace.add_item(vector=child_embedding, id=newChildID)
             logger.info(f"Added new child for {parentNode.space_id}")
-            logger.info(f"Added new child for {parentNode.space_id}")
+            
             
         elif isChild and child_num == self.closenodes_num:
             
@@ -351,7 +350,7 @@ class embeddingSearcher():
                 
                 logger.info(f"Added new child for {parentNode.space_id} and removed {child_id}")
                 
-                logger.info(f"Added new child for {parentNode.space_id} and removed {child_id}")
+            
         else:
             del newChild
         
